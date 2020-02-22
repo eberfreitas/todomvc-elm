@@ -1,28 +1,40 @@
 module Main exposing (..)
 
 import Browser
+import Browser.Dom as Dom
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Json
+import Task
 
 
 type alias Model =
-    { newInput : String
+    { uid : Int
+    , newInput : String
     , entries : List Todo
     }
 
 
 type alias Todo =
     { id : Int
-    , description : String
+    , title : String
+    , tmpTitle : String
     , completed : Bool
+    , editing : Bool
     }
 
 
 type Msg
-    = GotTodo String
+    = NoOp
+    | GotTodo String
     | SubmitTodo
+    | DeleteTodo Int
+    | ToggleCompleted Int Bool
+    | StartEditing Int
+    | UpdateTodo Int String
+    | SaveTodo Int
+    | CancelUpdate Int
 
 
 mainInput : String -> Html Msg
@@ -48,18 +60,36 @@ todoItem todo =
             else
                 []
     in
-    li [ classList [ ( "completed", todo.completed ) ] ]
+    li
+        [ classList
+            [ ( "completed", todo.completed )
+            , ( "editing", todo.editing )
+            ]
+        , onDoubleClick (StartEditing todo.id)
+        ]
         [ div [ class "view" ]
-            [ input ([ class "toggle", type_ "checkbox" ] ++ checked)
+            [ input ([ class "toggle", type_ "checkbox", onClick (ToggleCompleted todo.id (not todo.completed)) ] ++ checked)
                 []
             , label []
-                [ text todo.description ]
-            , button [ class "destroy" ]
+                [ text todo.title ]
+            , button [ class "destroy", onClick (DeleteTodo todo.id) ]
                 []
             ]
-        , input [ class "edit", value todo.description ]
-            []
+        , todoEditor todo
         ]
+
+
+todoEditor : Todo -> Html Msg
+todoEditor todo =
+    input
+        [ class "edit"
+        , value todo.tmpTitle
+        , id ("entry-" ++ String.fromInt todo.id)
+        , onInput (UpdateTodo todo.id)
+        , onBlur (CancelUpdate todo.id)
+        , onEnter (SaveTodo todo.id)
+        ]
+        []
 
 
 mainTodos : List Todo -> Html Msg
@@ -128,7 +158,7 @@ onEnter msg =
 
 init : () -> ( Model, Cmd Msg )
 init () =
-    ( { newInput = "", entries = [] }
+    ( { uid = 0, newInput = "", entries = [] }
     , Cmd.none
     )
 
@@ -136,15 +166,125 @@ init () =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
         GotTodo input ->
             ( { model | newInput = input }, Cmd.none )
 
         SubmitTodo ->
             let
-                entries =
-                    model.entries ++ [ Todo 0 model.newInput False ]
+                newTodo =
+                    String.trim model.newInput
+
+                ( entries, id ) =
+                    case newTodo of
+                        "" ->
+                            ( model.entries, model.uid )
+
+                        _ ->
+                            ( model.entries ++ [ Todo (model.uid + 1) model.newInput model.newInput False False ]
+                            , model.uid + 1
+                            )
             in
-            ( { model | newInput = "", entries = entries }, Cmd.none )
+            ( { model | newInput = "", entries = entries, uid = id }, Cmd.none )
+
+        DeleteTodo id ->
+            let
+                newEntries =
+                    List.filter
+                        (.id >> (/=) id)
+                        model.entries
+            in
+            ( { model | entries = newEntries }
+            , Cmd.none
+            )
+
+        ToggleCompleted id completed ->
+            let
+                newEntries =
+                    List.map
+                        (\entry ->
+                            if entry.id == id then
+                                { entry | completed = completed }
+
+                            else
+                                entry
+                        )
+                        model.entries
+            in
+            ( { model | entries = newEntries }, Cmd.none )
+
+        StartEditing id ->
+            let
+                newEntries =
+                    List.map
+                        (\entry ->
+                            if entry.id == id then
+                                { entry | editing = True }
+
+                            else
+                                { entry | editing = False }
+                        )
+                        model.entries
+            in
+            ( { model | entries = newEntries }
+            , Task.attempt (\_ -> NoOp) (Dom.focus ("entry-" ++ String.fromInt id))
+            )
+
+        UpdateTodo id title ->
+            let
+                newEntries =
+                    List.map
+                        (\entry ->
+                            if entry.id == id then
+                                { entry | tmpTitle = title }
+
+                            else
+                                entry
+                        )
+                        model.entries
+            in
+            ( { model | entries = newEntries }, Cmd.none )
+
+        SaveTodo id ->
+            let
+                newEntries =
+                    List.filterMap
+                        (\entry ->
+                            if entry.id == id then
+                                let
+                                    title =
+                                        String.trim entry.tmpTitle
+                                in
+                                case title of
+                                    "" ->
+                                        Nothing
+
+                                    _ ->
+                                        Just { entry | title = title, editing = False }
+
+                            else
+                                Just entry
+                        )
+                        model.entries
+            in
+            ( { model | entries = newEntries }, Cmd.none )
+
+        CancelUpdate id ->
+            let
+                newEntries =
+                    List.map
+                        (\entry ->
+                            if entry.id == id then
+                                { entry | tmpTitle = entry.title, editing = False }
+
+                            else
+                                entry
+                        )
+                        model.entries
+            in
+            ( { model | entries = newEntries }, Cmd.none )
 
 
 main =
