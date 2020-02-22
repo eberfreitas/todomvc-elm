@@ -8,14 +8,14 @@ import Json.Decode as Json
 
 
 type alias Model =
-    { todo : String
-    , todoList : List Todo
+    { newInput : String
+    , entries : List Todo
     }
 
 
 type alias Todo =
     { id : Int
-    , todo : String
+    , description : String
     , completed : Bool
     }
 
@@ -53,11 +53,11 @@ todoItem todo =
             [ input ([ class "toggle", type_ "checkbox" ] ++ checked)
                 []
             , label []
-                [ text todo.todo ]
+                [ text todo.description ]
             , button [ class "destroy" ]
                 []
             ]
-        , input [ class "edit", value todo.todo ]
+        , input [ class "edit", value todo.description ]
             []
         ]
 
@@ -84,9 +84,9 @@ view model =
         [ header [ class "header" ]
             [ h1 []
                 [ text "todos" ]
-            , mainInput model.todo
+            , mainInput model.newInput
             ]
-        , mainTodos model.todoList
+        , mainTodos model.entries
         , footer [ class "footer" ]
             [ span [ class "todo-count" ]
                 [ strong []
@@ -128,7 +128,7 @@ onEnter msg =
 
 init : () -> ( Model, Cmd Msg )
 init () =
-    ( { todo = "", todoList = [] }
+    ( { newInput = "", entries = [] }
     , Cmd.none
     )
 
@@ -136,15 +136,15 @@ init () =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GotTodo todo ->
-            ( { model | todo = todo }, Cmd.none )
+        GotTodo input ->
+            ( { model | newInput = input }, Cmd.none )
 
         SubmitTodo ->
             let
-                todoList =
-                    model.todoList ++ [ Todo 0 model.todo False ]
+                entries =
+                    model.entries ++ [ Todo 0 model.newInput False ]
             in
-            ( { model | todo = "", todoList = todoList }, Cmd.none )
+            ( { model | newInput = "", entries = entries }, Cmd.none )
 
 
 main =
